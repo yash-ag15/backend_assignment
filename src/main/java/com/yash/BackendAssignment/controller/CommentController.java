@@ -8,7 +8,9 @@ import com.yash.BackendAssignment.repos.UserRepository;
 import com.yash.BackendAssignment.service.RedisService;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/posts")
@@ -23,14 +25,12 @@ public class CommentController {
     @Autowired
     private BotRepository botRepository;
 
-
     @Autowired
     private RedisService redisService;
 
     @PostMapping("/{postId}/comments")
     public Comment addComment(@PathVariable Long postId,
                               @RequestBody Comment comment) {
-
 
         if (comment.getAuthorType() == AuthorType.USER) {
             userRepository.findById(comment.getAuthorId())
@@ -40,13 +40,13 @@ public class CommentController {
                     .orElseThrow(() -> new RuntimeException("Bot not found"));
         }
 
-
         int depth;
+        Comment parent = null;
 
         if (comment.getParentCommentId() == null) {
             depth = 1;
         } else {
-            Comment parent = commentRepository.findById(comment.getParentCommentId())
+            parent = commentRepository.findById(comment.getParentCommentId())
                     .orElseThrow(() -> new RuntimeException("Parent not found"));
 
             if (!parent.getPostId().equals(postId)) {
@@ -56,14 +56,40 @@ public class CommentController {
             depth = parent.getDepthLevel() + 1;
         }
 
-
         if (depth > 20) {
-            throw new RuntimeException("Depth limit exceeded");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Depth limit exceeded");
         }
 
         comment.setPostId(postId);
         comment.setDepthLevel(depth);
 
+        if (comment.getAuthorType() == AuthorType.BOT) {
+
+            boolean allowed = redisService.allowBot(postId);
+
+            if (!allowed) {
+                throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Bot limit exceeded");
+            }
+
+            if (parent != null && parent.getAuthorType() == AuthorType.USER) {
+
+                boolean allowedCooldown = redisService.allowBotToUser(
+                        comment.getAuthorId(),
+                        parent.getAuthorId()
+                );
+
+                if (!allowedCooldown) {
+                    throw new ResponseStatusException(
+                            HttpStatus.TOO_MANY_REQUESTS,
+                            "Cooldown active"
+                    );
+                }
+                redisService.handleNotification(
+                        parent.getAuthorId(),
+                        "Bot " + comment.getAuthorId() + " replied to your comment"
+                );
+            }
+        }
 
         if (comment.getAuthorType() == AuthorType.USER) {
             redisService.incrementScore(postId, 50);
