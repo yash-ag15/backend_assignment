@@ -12,21 +12,22 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 @Configuration
 public class RedisConfig {
+
     @Bean
     public LettuceConnectionFactory lettuceConnectionFactory(
-                    @Value("${spring.redis.host}") String host,
-                    @Value("${spring.redis.port}") int port,
-                    @Value("${spring.redis.password}") String password){
-        RedisStandaloneConfiguration configuration=new RedisStandaloneConfiguration();
+            @Value("${spring.redis.host}") String host,
+            @Value("${spring.redis.port}") int port,
+            @Value("${spring.redis.password}") String password) {
+
+        RedisStandaloneConfiguration configuration = new RedisStandaloneConfiguration();
         configuration.setHostName(host);
         configuration.setPort(port);
-        configuration.setPassword(password);
 
-        LettuceClientConfiguration clientConfiguration=LettuceClientConfiguration.builder()
-                .useSsl()
-                .build();
-        return new  LettuceConnectionFactory(configuration,clientConfiguration);
+        if (password != null && !password.isEmpty()) {
+            configuration.setPassword(password);
+        }
 
+        return new LettuceConnectionFactory(configuration);
     }
 
     @Bean
