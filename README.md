@@ -1,36 +1,40 @@
-# Backend Assignment – Spring Boot + Redis + PostgreSQL
+# 🚀 Backend Engineering Assignment – Spring Boot + Redis
 
-## 🚀 Overview
+## 📌 Overview
 
-This project implements a backend system that simulates a social platform with:
-
-* Users and Bots interacting via posts and comments
-* Redis-based atomic locks and counters
-* Notification throttling and batching
-* Concurrency-safe operations
-
-The system is designed to handle **high concurrency**, **prevent spam**, and **batch notifications efficiently**.
+This project implements a high-performance Spring Boot microservice that acts as a central API layer with strict guardrails enforced using Redis. The system ensures safe bot interactions, prevents spam, and maintains real-time virality scoring.
 
 ---
 
-## 🛠️ Tech Stack
+## 🛠 Tech Stack
 
-* Java + Spring Boot
-* PostgreSQL (persistent storage)
-* Redis (caching, atomic operations, throttling)
-* Docker (for local setup)
+* Java 17
+* Spring Boot 3
+* PostgreSQL
+* Redis (via Docker)
+* Spring Data JPA
+* Spring Data Redis
 
 ---
 
 ## ⚙️ Setup Instructions
 
-### 1. Start services
+### 1. Start Infrastructure
 
 ```bash
-docker-compose up
+docker compose up
 ```
 
-### 2. Run application
+This will start:
+
+* PostgreSQL → `localhost:5433`
+* Redis → `localhost:6379`
+
+---
+
+### 2. Run Backend
+
+Run from IntelliJ or:
 
 ```bash
 mvn spring-boot:run
@@ -38,83 +42,49 @@ mvn spring-boot:run
 
 ---
 
-## 🗄️ Database Schema
 
-### User
-
-* id
-* username
-* isPremium
-
-### Bot
-
-* id
-* name
-* personaDescription
-
-### Post
-
-* id
-* authorId (User or Bot)
-* content
-* createdAt
-
-### Comment
-
-* id
-* postId
-* authorId
-* authorType (USER / BOT)
-* parentCommentId
-* depthLevel
-* content
-* createdAt
 
 ---
 
-## 📡 API Endpoints
+## 📦 API Endpoints
 
-### Create User
+### 👤 Users
 
-```
-POST /api/users
-```
-
-### Create Bot
-
-```
-POST /api/bots
-```
-
-### Create Post
-
-```
-POST /api/posts
-```
-
-### Add Comment
-
-```
-POST /api/posts/{postId}/comments
-```
-
-### Like Post
-
-```
-POST /api/posts/{postId}/like
-```
+* `POST /api/users` → Create user
+* `GET /api/users` → Get all users
 
 ---
 
-## 🔥 Redis-Based Features
+### 🤖 Bots
+
+* `POST /api/bots` → Create bot
 
 ---
 
-### 1. Virality Score
+### 📝 Posts
 
-* Human Like → +20
-* Human Comment → +50
-* Bot Comment → +1
+* `POST /api/posts` → Create post
+* `GET /api/posts/{id}` → Get post
+* `GET /api/posts` → Get all posts
+* `POST /api/posts/{postId}/like` → Like post (+20 score)
+
+---
+
+### 💬 Comments
+
+* `POST /api/posts/{postId}/comments` → Add comment
+
+Supports:
+
+* Root comments
+* Nested replies
+* Bot replies
+
+---
+
+## ⚡ Redis-Based Features
+
+### 1. Virality Score (Real-time)
 
 Stored in Redis:
 
@@ -122,172 +92,155 @@ Stored in Redis:
 post:{id}:score
 ```
 
-Uses:
-
-```
-INCR (atomic)
-```
+| Action       | Score |
+| ------------ | ----- |
+| User Comment | +50   |
+| Bot Comment  | +1    |
+| Like         | +20   |
 
 ---
 
-### 2. Horizontal Cap (Bot Limit)
+### 2. Atomic Locks (Concurrency Control)
 
-* Max 100 bot replies per post
-
-Key:
+#### Horizontal Cap
 
 ```
 post:{id}:bot_count
 ```
 
-Logic:
-
-```
-INCR → if > 100 → reject
-```
-
-✅ Ensures strict limit even under concurrency
+* Max 100 bot replies per post
+* Enforced using Redis `INCR`
 
 ---
 
-### 3. Vertical Cap (Depth Limit)
+#### Vertical Cap
 
 * Max depth = 20
-
-Calculated dynamically:
-
-```
-depth = parent.depth + 1
-```
+* Checked using parent comment
 
 ---
 
-### 4. Cooldown (Bot → User)
-
-* A bot cannot interact with the same user more than once every 10 minutes
-
-Key:
+#### Cooldown Cap
 
 ```
 cooldown:bot_{botId}:user_{userId}
 ```
 
-Uses:
-
-```
-SET with TTL (600 sec)
-```
+* Prevents bot spamming same user
+* TTL = 10 minutes
 
 ---
 
-### 5. Notification Throttling
+## 🔔 Notification Engine
 
-#### Immediate Notification
+### Redis Throttler
 
-First interaction:
+* Key: `notif:cooldown:user_{id}`
+* If cooldown exists:
 
-```
-Push Notification Sent to User X
-```
+  * Push message to:
 
-#### Cooldown Key
+    ```
+    user:{id}:pending_notifs
+    ```
+* Else:
 
-```
-notif:cooldown:user_{id}
-```
-
-TTL: 15 minutes
-
----
-
-### 6. Notification Batching
-
-If cooldown exists:
-
-* Notifications are stored in Redis List:
-
-```
-user:{id}:pending_notifs
-```
+  * Send immediate notification
+  * Set 15 min cooldown
 
 ---
 
-### 7. Cron Sweeper
+### CRON Scheduler
 
 Runs every 5 minutes:
 
+* Scans:
+
+  ```
+  user:*:pending_notifs
+  ```
+* Aggregates messages
+* Logs:
+
+  ```
+  Summarized Push Notification: Bot X and N others interacted with your posts.
+  ```
+* Clears list
+
+---
+
+## 🧠 Thread Safety & Concurrency
+
+Thread safety is guaranteed using Redis atomic operations:
+
+* `INCR` → ensures accurate bot count even under concurrent requests
+* `EXISTS` → ensures cooldown enforcement
+* TTL-based keys → eliminate race conditions without in-memory state
+
+No in-memory structures (like HashMap) are used → system is fully stateless.
+
+---
+
+## 🧪 Testing Guide
+
+### Flow
+
+1. Create User
+2. Create Bot
+3. Create Post
+4. Add Comments
+
+---
+
+### Edge Cases
+
+#### Bot Limit
+
+* After 100 bot comments → returns `429 Too Many Requests`
+
+#### Depth Limit
+
+* Depth > 20 → rejected
+
+#### Cooldown
+
+* Same bot → same user → blocked within 10 minutes
+
+#### Notifications
+
+* First → immediate
+* Next → batched
+* Scheduler → summarized output
+
+---
+
+## 🔍 Redis Verification
+
+```bash
+docker exec -it redis_db redis-cli
 ```
-@Scheduled(fixedRate = 300000)
+
+Check keys:
+
+```bash
+KEYS *
 ```
 
-Function:
+Check values:
 
-* Reads all pending notifications
-* Counts them
-* Logs summary:
-
+```bash
+GET post:1:score
+GET post:1:bot_count
+TTL cooldown:bot_1:user_1
+LRANGE user:1:pending_notifs 0 -1
 ```
-Summarized Push Notification: Bot X and N others interacted with your posts.
-```
 
-* Clears Redis list
 
----
-
-## 🧠 Concurrency & Thread Safety
-
-The system ensures thread safety using Redis atomic operations:
-
-### Atomic Operations Used
-
-* `INCR` → for bot count and virality score
-* `SET with TTL` → for cooldown locks
-* `LPUSH / RPUSH` → for notification queue
-
-These operations are **atomic in Redis**, ensuring:
-
-* No race conditions in counters
-* Accurate enforcement of limits
-* Safe concurrent access
-
----
 
 
 
 ---
 
-## 🧪 Testing
 
-A Postman collection is included with:
 
-* Sample requests
-* Pre-filled JSON bodies
-* Ready-to-run endpoints
-
----
-
-## 📦 Deliverables
-
-* Spring Boot source code
-* docker-compose.yml
-* Postman collection
-* README (this file)
-
----
-
-## 🎯 Summary
-
-This system demonstrates:
-
-* Redis-based atomic concurrency control
-* Rate limiting using TTL
-* Scalable notification batching
-* Clean separation of database and cache responsibilities
-
----
-
-## 👨‍💻 Author
-
-Yash Agrawal
-
----
+## Yash Agrawal
