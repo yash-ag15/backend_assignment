@@ -50,7 +50,7 @@ public class CommentController {
                     .orElseThrow(() -> new RuntimeException("Parent not found"));
 
             if (!parent.getPostId().equals(postId)) {
-                throw new RuntimeException("Parent belongs to different post");
+                throw new RuntimeException("Parent belongs to different post");//to check wheter the comment is on the same post
             }
 
             depth = parent.getDepthLevel() + 1;
@@ -73,6 +73,8 @@ public class CommentController {
 
             if (parent != null && parent.getAuthorType() == AuthorType.USER) {
 
+                //cool down b/w user and specific bot
+
                 boolean allowedCooldown = redisService.allowBotToUser(
                         comment.getAuthorId(),
                         parent.getAuthorId()
@@ -84,6 +86,7 @@ public class CommentController {
                             "Cooldown active"
                     );
                 }
+                //push notif to console through redis
                 redisService.handleNotification(
                         parent.getAuthorId(),
                         "Bot " + comment.getAuthorId() + " replied to your comment"

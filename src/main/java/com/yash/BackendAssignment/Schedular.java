@@ -14,15 +14,17 @@ public class Schedular {
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
 
+    // runs every 5 minutes to process pending notifications
     @Scheduled(fixedRate = 300000)
     public void processNotifications() {
 
+        //all the user with pending notif
         Set<String> keys = redisTemplate.keys("user:*:pending_notifs");
 
         if (keys == null || keys.isEmpty()) return;
 
         for (String key : keys) {
-
+//fetching all bot comment for the user
             List<Object> messages = redisTemplate.opsForList().range(key, 0, -1);
 
             if (messages != null && !messages.isEmpty()) {
