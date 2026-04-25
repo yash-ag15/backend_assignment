@@ -22,7 +22,13 @@ This project implements a high-performance Spring Boot microservice that acts as
 ### 1. Start Infrastructure
 
 ```bash
+Run any one:
+
 docker compose up
+
+OR (if above doesn't work):
+
+docker-compose up
 ```
 
 This will start:
