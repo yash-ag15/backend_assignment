@@ -252,22 +252,7 @@ These operations are **atomic in Redis**, ensuring:
 
 ---
 
-## ⚠️ Race Condition Note
 
-The scheduler and request handling run independently.
-
-During testing, it is possible that:
-
-* Scheduler clears notification list
-* While new requests are being processed
-
-This can cause partial batching.
-
-In production systems, this would be solved using:
-
-* Distributed locks
-* Message queues (Kafka / RabbitMQ)
-* Stream processing
 
 ---
 
